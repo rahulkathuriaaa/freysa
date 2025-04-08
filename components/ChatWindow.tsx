@@ -5,8 +5,8 @@ import "react-toastify/dist/ReactToastify.css"
 
 import { Message } from "ai"
 import { useChat } from "ai/react"
-import { ReactElement, useRef, useState } from "react"
 import type { FormEvent } from "react"
+import { ReactElement, useRef, useState } from "react"
 
 import { ChatMessageBubble } from "@/components/ChatMessageBubble"
 import { IntermediateStep } from "./IntermediateStep"
@@ -182,7 +182,7 @@ export function ChatWindow(props: {
 				<div className="flex">{intemediateStepsToggle}</div>
 				<div className="flex w-full mt-4">
 					<input
-						className="grow mr-8 p-4 rounded"
+						className="grow mr-8 p-4 rounded text-black placeholder:text-gray-500"
 						value={input}
 						placeholder={placeholder ?? "What's it like to be a pirate?"}
 						onChange={handleInputChange}
