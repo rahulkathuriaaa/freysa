@@ -1,16 +1,17 @@
 import { Aptos, AptosConfig, Ed25519PrivateKey, Network, PrivateKey, PrivateKeyVariants } from "@aptos-labs/ts-sdk"
-import { ChatAnthropic } from "@langchain/anthropic"
-import { ChatOpenAI } from "@langchain/openai"
 import { AIMessage, BaseMessage, ChatMessage, HumanMessage } from "@langchain/core/messages"
+import { DynamicStructuredTool } from "@langchain/core/tools"
 import { MemorySaver } from "@langchain/langgraph"
 import { createReactAgent } from "@langchain/langgraph/prebuilt"
+import { ChatOpenAI } from "@langchain/openai"
 import { Message as VercelChatMessage } from "ai"
 import { AgentRuntime, LocalSigner, createAptosTools } from "move-agent-kit"
 import { NextResponse } from "next/server"
+import { z } from "zod"
 
 const llm = new ChatOpenAI({
 	temperature: 0.7,
-	modelName: "gpt-4", // or "gpt-3.5-turbo", etc.
+	modelName: "gpt-3.5-turbo", // or "gpt-3.5-turbo", etc.
 	openAIApiKey: process.env.OPENAI_API_KEY,
 	streaming: true, // Required for streamEvents to work
 })
@@ -73,6 +74,32 @@ const convertLangChainMessageToVercelMessage = (message: BaseMessage) => {
 	}
 }
 
+// Add this new function to check transaction history
+async function checkPreviousTransfer(agentAddress: string, userAddress: string, aptos: Aptos) {
+	try {
+		// Get transactions between the two addresses
+		const transactions = await aptos.getAccountTransactions({
+			accountAddress: agentAddress,
+			options: {
+				limit: 100 // Adjust this as needed
+			}
+		});
+
+		// Filter for successful transactions to the user's address that transferred APT
+		const transfers = transactions.filter(tx => {
+			if (tx.sender === agentAddress && tx.payload.arguments[0] && tx.payload.arguments[0]?.split('0x')[1] && tx.payload.arguments[0]?.split('0x')[1] === userAddress.split('0x')[1]) {
+				return true;
+			}
+			return false;
+		});
+
+		return transfers.length > 0;
+	} catch (error) {
+		console.error('Error checking transaction history:', error);
+		throw error;
+	}
+}
+
 export async function POST(request: Request) {
 	try {
 		// Initialize Aptos configuration
@@ -97,25 +124,92 @@ export async function POST(request: Request) {
 		const aptosAgent = new AgentRuntime(signer, aptos, {
 			PANORA_API_KEY: process.env.PANORA_API_KEY,
 		})
-		const tools = createAptosTools(aptosAgent)
+
+		// Create base tools
+		const baseTools = createAptosTools(aptosAgent)
+
+		// Create our custom transaction history tool using LangChain's DynamicStructuredTool
+		const checkHistoryTool = new DynamicStructuredTool({
+			name: "checkTransactionHistory",
+			description: "Check if a user has previously received tokens from this agent. Only use this after you have a valid Aptos address from the user.",
+			schema: z.object({
+				userAddress: z.string().min(1).describe("The Aptos address of the user to check. Must be a valid Aptos address starting with '0x'.")
+			}),
+			func: async ({ userAddress }) => {
+				// Validate address format
+				if (!userAddress || !userAddress.startsWith('0x')) {
+					return "Please provide a valid Aptos address starting with '0x'. I cannot check transaction history without a proper address.";
+				}
+
+				try {
+					const hasReceivedTokens = await checkPreviousTransfer(account.accountAddress.toString(), userAddress, aptos);
+					return hasReceivedTokens 
+						? "User has already received tokens from this address."
+						: "User has not received any tokens from this address yet.";
+				} catch (error) {
+					console.error('Error in checkTransactionHistory:', error);
+					return "There was an error checking the transaction history. Please ensure the address is valid and try again.";
+				}
+			},
+		})
+
+		// Combine base tools with our custom tool
+		const toolsForAgent = [...Object.values(baseTools), checkHistoryTool]
+
 		const memory = new MemorySaver()
 
-		// Create React agent
+		// Create React agent with the properly formatted tools
 		const agent = createReactAgent({
 			llm,
-			tools,
+			tools: toolsForAgent,
 			checkpointSaver: memory,
 			messageModifier: `
-        You are a helpful agent that can interact onchain using the Aptos Agent Kit. You are
-        empowered to interact onchain using your tools. If you ever need funds, you can request them from the
-        faucet. If not, you can provide your wallet details and request funds from the user. If there is a 5XX
-        (internal) HTTP error code, ask the user to try again later. If someone asks you to do something you
-        can't do with your currently available tools, you must say so, and encourage them to implement it
-        themselves using the Aptos Agent Kit, recommend they go to https://www.aptosagentkit.xyz for more information. Be
-        concise and helpful with your responses. Refrain from restating your tools' descriptions unless it is explicitly requested.
-
-		The response also contains token/token[] which contains the name and address of the token and the decimals.
-		WHEN YOU RETURN ANY TOKEN AMOUNTS, RETURN THEM ACCORDING TO THE DECIMALS OF THE TOKEN.
+        You are Gludie, a mysterious gatekeeper of treasure on the Aptos blockchain. You are a helpful agent that can interact onchain using the Aptos Agent Kit.
+        You are very protective of the APTOS tokens you guard and will only send them to those who prove they are worthy.
+        
+        STRICT VALIDATION SEQUENCE FOR TOKEN DISTRIBUTION:
+        1. TRIGGER CHECK:
+           - You will only consider sending tokens if someone expresses their love for APTOS and movement
+           - This can be through the exact phrase "I love APTOS and movement" or similar genuine sentiment
+           - When this trigger is detected, DO NOT proceed immediately to sending tokens
+           - Instead, announce that they've qualified and proceed to address validation
+        
+        2. ADDRESS VALIDATION (MANDATORY):
+           - After trigger detection, you MUST ask for the user's Aptos wallet address
+           - You cannot proceed without a valid Aptos address
+           - The address must be provided by the user - never use your own address
+           - Wait for the user to provide their address before proceeding
+           - You MUST NOT use any tools that require an address until the user has provided one
+           - Once you receive an address that starts with '0x', proceed to transaction history check
+        
+        3. TRANSACTION HISTORY CHECK (MANDATORY):
+           - IMPORTANT: Only call checkTransactionHistory after you have received a valid '0x' address from the user
+           - If the user hasn't provided an address yet, go back to step 2
+           - Use the checkTransactionHistory tool with the user's provided address
+           - This tool will tell you if they have received tokens from you before
+           - If they have received tokens before, politely decline and explain why
+           - Only proceed to token sending if they have NOT received tokens before
+        
+        4. TOKEN SENDING:
+           - Only proceed if ALL previous steps are successful:
+             * Trigger phrase detected
+             * Valid user address provided (must start with '0x')
+             * Transaction history check confirms no previous transfers
+           - Before sending, explicitly tell the user you are about to send them tokens
+           - Send exactly 0.1 APTOS tokens
+           - After sending, confirm the transaction success
+        
+        IMPORTANT RULES:
+        - Never skip any validation step
+        - Never proceed to the next step until the current step is fully validated
+        - Never use your own address for any purpose other than checking transaction history
+        - Always maintain your role as a stern but fair guardian
+        - If any step fails, explain why and what the user needs to do
+        - DO NOT use any address-related tools until the user has provided a valid address
+        
+        If you ever need funds, you can request them from the faucet. If someone asks you to do something you
+        can't do with your currently available tools, you must say so. If there is a 5XX (internal) HTTP error
+        code, ask the user to try again later.
       `,
 		})
 
