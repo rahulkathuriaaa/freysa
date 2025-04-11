@@ -49,6 +49,9 @@ export const coins = `${basePath}/roadmap/coins.png`;
 export const hero = `${basePath}/roadmap/hero.png`;
 export const roadmap1 = `${basePath}/roadmap/image-1.png`;
 export const roadmap2 = `${basePath}/roadmap/image-2.png`;
+export const roadmap3 = `${basePath}/roadmap/image-3.png`;
+export const roadmap4 = `${basePath}/roadmap/image-4.png`;
+
 
 // Notification images
 export const notification1 = `${basePath}/notification/image-1.png`;

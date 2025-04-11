@@ -87,7 +87,10 @@ async function checkPreviousTransfer(agentAddress: string, userAddress: string, 
 
 		// Filter for successful transactions to the user's address that transferred APT
 		const transfers = transactions.filter(tx => {
-			if (tx.sender === agentAddress && tx.payload.arguments[0] && tx.payload.arguments[0]?.split('0x')[1] && tx.payload.arguments[0]?.split('0x')[1] === userAddress.split('0x')[1]) {
+			if (tx.type === 'user_transaction' && 
+				tx.sender === agentAddress && 
+				(tx.payload as any)?.arguments?.[0] && 
+				(tx.payload as any).arguments[0]?.split('0x')[1] === userAddress.split('0x')[1]) {
 				return true;
 			}
 			return false;

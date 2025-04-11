@@ -34,22 +34,23 @@ import {
   telegram,
   twitter,
   yourlogo,
+  
 } from "../assets";
 
 export const navigation = [
   {
     id: "0",
-    title: "Features",
+    title: "Blueprint",
     url: "#features",
   },
   {
     id: "1",
-    title: "Pricing",
+    title: "Framework",
     url: "#pricing",
   },
   {
     id: "2",
-    title: "How to use",
+    title: "Visuals",
     url: "#how-to-use",
   },
   {
@@ -94,17 +95,17 @@ export const brainwaveServicesIcons = [
 export const roadmap = [
   {
     id: "0",
-    title: "Voice recognition",
-    text: "Enable the chatbot to understand and respond to voice commands, making it easier for users to interact with the app hands-free.",
-    date: "May 2023",
+    title: "Empowering AI Interaction",
+    text: "Implement adaptive AI responses, refining interactions based on user persuasion techniques",
+    date: "May 2025",
     status: "done",
     imageUrl: roadmap1,
     colorful: true,
   },
   {
     id: "1",
-    title: "Gamification",
-    text: "Add game-like elements, such as badges or leaderboards, to incentivize users to engage with the chatbot more frequently.",
+    title: "AI Personalities & Expansion",
+    text: "Enhance AI capabilities with real-world personality emulation powered by vector databases.",
     date: "May 2023",
     status: "progress",
     imageUrl: roadmap2,
