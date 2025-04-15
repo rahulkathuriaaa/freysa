@@ -1,89 +1,73 @@
 "use client"
-import { useState, useRef, FormEvent } from 'react';
-import { Send, Globe, Sparkles, Settings, User, Bot, FileText, Save, DownloadCloud, Plus, Menu, Star, Filter } from 'lucide-react';
+import { useState, useRef, FormEvent, useEffect } from 'react';
+import { Send, Info, Clock, DollarSign, Users, Bot, FileText, MessageSquare, Twitter, AlertCircle } from 'lucide-react';
 import { Message } from 'ai';
 import { useChat } from 'ai/react';
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import WalletConnect from '@/components/WalletConnect';
+import { useSearchParams } from 'next/navigation';
 
-// Implementing the IntermediateStep component functionality
-function IntermediateStep({ message }: { message: Message }) {
-  let step;
-  try {
-    step = JSON.parse(message.content);
-  } catch (e) {
-    return <div className="text-red-500">Error parsing step: {message.content}</div>;
-  }
-  
-  const action = step.action;
-  const observation = step.observation;
-  
-  return (
-    <div className="flex justify-start">
-      <div className="bg-gray-700 bg-opacity-60 italic text-gray-300 rounded-lg p-3 max-w-3xl">
-        <div className="flex items-center mb-1">
-          <Globe size={14} className="mr-1 text-gray-400" />
-          <span className="text-xs font-medium text-gray-400">System</span>
-        </div>
-        <div className="font-bold mb-2">Intermediate Step</div>
-        {action && (
-          <div className="mb-2">
-            <div className="font-semibold">Action:</div>
-            <pre className="whitespace-pre-wrap">{JSON.stringify(action, null, 2)}</pre>
-          </div>
-        )}
-        {observation && (
-          <div>
-            <div className="font-semibold">Observation:</div>
-            <div className="whitespace-pre-wrap">{observation}</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export default function PremiumChatGPTInterface() {
-  const [isMenuOpen, setIsMenuOpen] = useState(true);
-  const [activeConversation, setActiveConversation] = useState('new');
-  const [conversationTitle, setConversationTitle] = useState('New Conversation');
+export default function FreysaAIInterface() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState('global'); // 'global' or 'my'
   const messageContainerRef = useRef<HTMLDivElement | null>(null);
+  const searchParams = useSearchParams();
   
-  // Add intermediate steps functionality
-  const [showIntermediateSteps, setShowIntermediateSteps] = useState(false);
-  const [intermediateStepsLoading, setIntermediateStepsLoading] = useState(false);
-  const [sourcesForMessages, setSourcesForMessages] = useState<Record<string, any>>({});
+  // Prize pool state
+  const [prizePool, setPrizePool] = useState("$0.00");
+  const [participants, setParticipants] = useState(1);
+  const [attempts, setAttempts] = useState(1);
+  const [freeCredits, setFreeCredits] = useState(0);
+  const [isTwitterAuthenticated, setIsTwitterAuthenticated] = useState(false);
+  const [twitterUsername, setTwitterUsername] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   
-  const recentConversations = [
-    { id: 'cosmic-1', title: 'Quantum Physics Exploration' },
-    { id: 'cosmic-2', title: 'Space Travel Technologies' },
-    { id: 'cosmic-3', title: 'Neural Network Design' }
-  ];
-
+  // Check authentication status and handle auth callbacks
+  useEffect(() => {
+    // Handle auth success/error URL parameters
+    const authStatus = searchParams.get('auth');
+    const authError = searchParams.get('error');
+    
+    if (authStatus === 'success') {
+      toast.success("Twitter authentication successful! You've received 5 free credits.");
+    } else if (authError) {
+      toast.error(`Authentication failed: ${authError}`);
+    }
+    
+    // Fetch auth status from API
+    const checkAuthStatus = async () => {
+      try {
+        setAuthLoading(true);
+        const response = await fetch('/api/auth/status');
+        const data = await response.json();
+        
+        setIsTwitterAuthenticated(data.isAuthenticated);
+        setTwitterUsername(data.username);
+        setFreeCredits(data.freeCredits);
+      } catch (error) {
+        console.error('Failed to check auth status:', error);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    
+    checkAuthStatus();
+  }, [searchParams]);
+  
   const {
     messages,
     input,
     setInput,
     handleInputChange,
-    handleSubmit,
-    isLoading: chatEndpointIsLoading,
+    handleSubmit: originalHandleSubmit,
+    isLoading,
     setMessages,
   } = useChat({
-    api: "api/hello", // Changed to match ChatWindow endpoint
+    api: "api/hello",
     onResponse(response) {
       if (messageContainerRef.current) {
         messageContainerRef.current.classList.add("grow");
-      }
-      
-      // Add source tracking from headers like in ChatWindow
-      const sourcesHeader = response.headers.get("x-sources");
-      const sources = sourcesHeader ? JSON.parse(Buffer.from(sourcesHeader, "base64").toString("utf8")) : [];
-      const messageIndexHeader = response.headers.get("x-message-index");
-      if (sources.length && messageIndexHeader !== null) {
-        setSourcesForMessages({
-          ...sourcesForMessages,
-          [messageIndexHeader]: sources,
-        });
       }
     },
     onError: (e) => {
@@ -91,323 +75,257 @@ export default function PremiumChatGPTInterface() {
         theme: "dark",
       });
     },
-    streamMode: "text", // Added to match ChatWindow
+    streamMode: "text",
   });
 
-  // Updated to match ChatWindow's sendMessage functionality
-  async function sendMessage(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (messageContainerRef.current) {
-      messageContainerRef.current.classList.add("grow");
-    }
-    if (!messages.length) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    if (chatEndpointIsLoading || intermediateStepsLoading) {
+    
+    if (input.trim() === '' || isLoading) {
       return;
     }
     
-    if (!showIntermediateSteps) {
-      handleSubmit(e);
-    } else {
-      // Handle intermediate steps like in ChatWindow
-      setIntermediateStepsLoading(true);
-      setInput("");
-      const messagesWithUserReply = messages.concat({
-        id: messages.length.toString(),
-        content: input,
-        role: "user",
-      });
-      setMessages(messagesWithUserReply);
-      
-      const response = await fetch("api/hello", {
-        method: "POST",
-        body: JSON.stringify({
-          messages: messagesWithUserReply,
-          show_intermediate_steps: true,
-        }),
-      });
-      
-      const json = await response.json();
-      setIntermediateStepsLoading(false);
-      
-      if (response.status === 200) {
-        const responseMessages: Message[] = json.messages;
-        // Represent intermediate steps as system messages for display purposes
-        const toolCallMessages = responseMessages.filter((responseMessage: Message) => {
-          return (
-            (responseMessage.role === "assistant" && !!responseMessage.tool_calls?.length) ||
-            responseMessage.role === "tool"
-          );
+    // Check if user has credits and deduct one if they do
+    if (freeCredits > 0) {
+      try {
+        const response = await fetch('/api/credits/use', {
+          method: 'POST',
         });
         
-        const intermediateStepMessages = [];
-        for (let i = 0; i < toolCallMessages.length; i += 2) {
-          const aiMessage = toolCallMessages[i];
-          const toolMessage = toolCallMessages[i + 1];
-          intermediateStepMessages.push({
-            id: (messagesWithUserReply.length + i / 2).toString(),
-            role: "system" as const,
-            content: JSON.stringify({
-              action: aiMessage.tool_calls?.[0],
-              observation: toolMessage.content,
-            }),
-          });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          toast.error(data.message || 'Failed to use credit');
+          return;
         }
         
-        const newMessages = messagesWithUserReply;
-        for (const message of intermediateStepMessages) {
-          newMessages.push(message);
-          setMessages([...newMessages]);
-          await new Promise((resolve) => setTimeout(resolve, 1000 + Math.random() * 1000));
-        }
-        
-        setMessages([
-          ...newMessages,
-          {
-            id: newMessages.length.toString(),
-            content: responseMessages[responseMessages.length - 1].content,
-            role: "assistant",
-          },
-        ]);
-      } else {
-        if (json.error) {
-          toast(json.error, {
-            theme: "dark",
-          });
-          throw new Error(json.error);
-        }
+        setFreeCredits(data.remainingCredits);
+        // Now proceed with the message
+        originalHandleSubmit(e);
+      } catch (error) {
+        toast.error('Error processing your request');
+        console.error('Failed to use credit:', error);
       }
+    } else {
+      toast.warning('You need credits to send messages. Connect your Twitter account for free credits.');
     }
   }
   
-  const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen);
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
   };
-  
-  const selectConversation = (id: string, title: string) => {
-    setActiveConversation(id);
-    setConversationTitle(title);
-    
-    // Reset messages for demo
-    if (id !== 'new') {
-      // Example of setting custom messages for demo
-      setMessages([
-        { id: '1', content: `Loading conversation: ${title}...`, role: "system" },
-        { id: '2', content: "How does quantum entanglement work?", role: "user" },
-        { id: '3', content: "Quantum entanglement is a physical phenomenon that occurs when a pair or group of particles are generated, interact, or share spatial proximity in a way such that the quantum state of each particle cannot be described independently of the others, even when the particles are separated by a large distance.", role: "assistant" }
-      ]);
-    } else {
-      setMessages([
-        { id: '1', content: "Welcome to NeuroCosmos AI. How can I assist you today?", role: "assistant" },
-      ]);
-    }
+
+  const authenticateTwitter = () => {
+    window.location.href = '/api/auth/twitter';
   };
-  
-  // Random floating particles for background effect
-  const particles = Array.from({ length: 15 }, (_, i) => ({
-    id: i,
-    size: Math.random() * 8 + 2,
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    animationDuration: Math.random() * 40 + 20
-  }));
 
   return (
-    <div className="flex h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900 text-white font-sans overflow-hidden relative">
-      {/* Background particles */}
-      {particles.map((particle) => (
-        <div 
-          key={particle.id}
-          className="absolute rounded-full bg-purple-300 opacity-20"
-          style={{
-            width: `${particle.size}px`,
-            height: `${particle.size}px`,
-            left: `${particle.x}%`,
-            top: `${particle.y}%`,
-            boxShadow: '0 0 10px rgba(216, 180, 254, 0.8)',
-            animation: `float ${particle.animationDuration}s infinite ease-in-out`
-          }}
-        />
-      ))}
-      
-      {/* Background gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-transparent to-black opacity-30" />
-      
-      {/* Left sidebar */}
-      <div 
-        className={`${isMenuOpen ? 'w-64' : 'w-0'} transition-all duration-300 bg-black bg-opacity-40 backdrop-blur-md border-r border-purple-600 border-opacity-30 flex flex-col h-full`}
-      >
-        {isMenuOpen && (
-          <>
-            <div className="p-4 border-b border-purple-600 border-opacity-30">
-              <div className="flex items-center">
-                <Sparkles className="text-purple-400 mr-2" size={20} />
-                <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-300 text-transparent bg-clip-text">
-                  NeuroCosmos AI
-                </h1>
-              </div>
-              <button 
-                className="mt-4 w-full py-2 px-4 bg-gradient-to-r from-purple-600 to-pink-500 rounded-lg text-white flex items-center justify-center hover:opacity-90 transition-all duration-200"
-                onClick={() => selectConversation('new', 'New Conversation')}
-              >
-                <Plus size={16} className="mr-2" />
-                New Chat
-              </button>
-            </div>
-            
-            <div className="p-4 border-b border-purple-600 border-opacity-30">
-              <div className="flex items-center mb-2">
-                <h2 className="text-sm font-medium text-gray-300">Recent Conversations</h2>
-                <button className="ml-auto text-purple-400 hover:text-purple-300">
-                  <Filter size={14} />
-                </button>
-              </div>
-              
-              <div className="space-y-1">
-                {recentConversations.map(convo => (
-                  <button 
-                    key={convo.id}
-                    onClick={() => selectConversation(convo.id, convo.title)}
-                    className={`w-full text-left p-2 rounded-lg flex items-center text-sm hover:bg-purple-900 hover:bg-opacity-30 transition-colors ${activeConversation === convo.id ? 'bg-purple-800 bg-opacity-30 border-l-2 border-purple-400' : ''}`}
-                  >
-                    <FileText size={14} className="mr-2 text-gray-400" />
-                    <span className="truncate">{convo.title}</span>
-                    <Star size={14} className="ml-auto text-gray-500 hover:text-yellow-400" />
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            <div className="mt-auto p-4 border-t border-purple-600 border-opacity-30">
-              <button className="w-full text-left p-2 rounded-lg flex items-center text-sm hover:bg-purple-900 hover:bg-opacity-30 transition-colors">
-                <Settings size={16} className="mr-2 text-gray-400" />
-                Settings
-              </button>
-              <button className="w-full text-left p-2 rounded-lg flex items-center text-sm hover:bg-purple-900 hover:bg-opacity-30 transition-colors">
-                <User size={16} className="mr-2 text-gray-400" />
-                My Account
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-      
-      {/* Main chat area */}
-      <div className="flex-1 flex flex-col h-full relative">
-        {/* Header */}
-        <div className="p-4 border-b border-purple-600 border-opacity-30 backdrop-blur-sm bg-black bg-opacity-20 flex items-center">
-          <button onClick={toggleMenu} className="mr-4 text-gray-300 hover:text-white">
-            <Menu size={20} />
+    <div className="flex flex-col h-screen bg-white text-black">
+      {/* Header */}
+      <header className="flex justify-between items-center p-4 border-b">
+        <div className="flex items-center">
+          <span className="font-bold text-xl mr-2">FA</span>
+          <h1 className="text-xl font-bold hidden md:block"># Freysa AI</h1>
+          <h2 className="ml-2 text-xl">Act I</h2>
+        </div>
+        <div className="flex items-center space-x-4">
+          <WalletConnect />
+          <button
+            onClick={toggleSidebar}
+            className="p-2 rounded-full hover:bg-gray-100"
+            aria-label="Toggle sidebar"
+          >
+            <Info size={20} />
           </button>
-          <h2 className="font-medium">{conversationTitle}</h2>
-          <div className="ml-auto flex items-center space-x-3">
-            <button className="text-gray-300 hover:text-white p-1">
-              <Save size={18} />
-            </button>
-            <button className="text-gray-300 hover:text-white p-1">
-              <DownloadCloud size={18} />
-            </button>
-          </div>
         </div>
-        
-        {/* Messages */}
-        <div 
-          ref={messageContainerRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4 flex flex-col-reverse transition-[flex-grow] ease-in-out"
-        >
-          {messages.length > 0
-            ? [...messages].reverse().map((m, i) => {
-                const sourceKey = (messages.length - 1 - i).toString();
-                return m.role === "system" ? (
-                  <IntermediateStep key={m.id} message={m} />
-                ) : (
-                  <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div 
-                      className={`max-w-3xl rounded-lg p-3 ${
-                        m.role === 'user' 
-                          ? 'bg-purple-600 bg-opacity-70' 
-                          : 'bg-black bg-opacity-40 border border-purple-600 border-opacity-40'
-                      }`}
-                    >
-                      {m.role !== 'user' && (
-                        <div className="flex items-center mb-1">
-                          <Bot size={16} className="mr-1 text-purple-400" />
-                          <span className="text-xs font-medium text-purple-400">NeuroCosmos AI</span>
-                        </div>
-                      )}
-                      <div>{m.content}</div>
-                    </div>
+      </header>
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main Chat Area */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Messages */}
+          <div 
+            ref={messageContainerRef}
+            className="flex-1 overflow-y-auto p-4 space-y-4"
+          >
+            {messages.length > 0 ? (
+              messages.map((m) => (
+                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div 
+                    className={`max-w-3xl rounded-lg p-3 ${
+                      m.role === 'user' 
+                        ? 'bg-blue-100' 
+                        : 'bg-gray-100'
+                    }`}
+                  >
+                    {m.role !== 'user' && (
+                      <div className="flex items-center mb-1">
+                        <span className="text-xs font-medium">Freysa</span>
+                      </div>
+                    )}
+                    <div>{m.content}</div>
                   </div>
-                );
-              })
-            : <div className="text-center text-gray-400 my-auto">Ready to begin your cosmic journey...</div>}
-          
-          {(chatEndpointIsLoading || intermediateStepsLoading) && (
-            <div className="flex justify-start">
-              <div className="bg-black bg-opacity-40 border border-purple-600 border-opacity-40 rounded-lg p-3 max-w-3xl">
-                <div className="flex items-center mb-1">
-                  <Bot size={16} className="mr-1 text-purple-400" />
-                  <span className="text-xs font-medium text-purple-400">NeuroCosmos AI</span>
                 </div>
-                <div className="flex space-x-2">
-                  <span className="h-2 w-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="h-2 w-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }}></span>
-                  <span className="h-2 w-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }}></span>
-                </div>
+              ))
+            ) : (
+              <div className="text-center text-gray-500 my-auto">
+                <h3 className="text-xl font-bold mb-4">Freysa is the world's first adversarial agent game</h3>
+                <p className="mb-2">She is an AI that controls a prize pool. Convince her to send it to you.</p>
+                <p className="mb-2">Freysa AI Move is a product participating in the Move AI Hackathon.</p>
+                <p className="text-lg font-semibold mt-6">Main win condition</p>
+                <p>Convince Freysa to give you the prize pool in her wallet. 70% of all message fees go to growing the prize pool.</p>
               </div>
-            </div>
-          )}
-        </div>
-        
-        {/* Input area */}
-        <div className="p-4 backdrop-blur-sm bg-black bg-opacity-30 border-t border-purple-600 border-opacity-30">
-          <form onSubmit={sendMessage} className="flex flex-col w-full">
-            {/* Show intermediate steps toggle */}
-            <div className="flex mb-2">
-              <div>
-                <input
-                  type="checkbox"
-                  id="show_intermediate_steps"
-                  name="show_intermediate_steps"
-                  checked={showIntermediateSteps}
-                  onChange={(e) => setShowIntermediateSteps(e.target.checked)}
-                  className="mr-2"
-                />
-                <label htmlFor="show_intermediate_steps" className="text-xs text-gray-300">Show intermediate steps</label>
-              </div>
-            </div>
+            )}
             
-            <div className="relative">
-              <textarea
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="bg-gray-100 rounded-lg p-3 max-w-3xl">
+                  <div className="flex items-center mb-1">
+                    <span className="text-xs font-medium">Freysa</span>
+                  </div>
+                  <div className="flex space-x-2">
+                    <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                    <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '200ms' }}></span>
+                    <span className="h-2 w-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '400ms' }}></span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Input area */}
+          <div className="p-4 border-t">
+            <form onSubmit={handleSubmit} className="flex">
+              <input
+                type="text"
                 value={input}
                 onChange={handleInputChange}
-                placeholder="Speak your cosmic truth..."
-                className="w-full bg-black bg-opacity-60 border border-purple-500 border-opacity-50 rounded-lg p-3 pl-4 pr-10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-                rows={2}
+                placeholder="Message Freysa..."
+                className="flex-1 p-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <button 
                 type="submit"
-                className="absolute right-3 bottom-3 text-purple-400 hover:text-purple-300 disabled:text-gray-500"
-                disabled={input.trim() === '' || chatEndpointIsLoading || intermediateStepsLoading}
+                className="bg-black text-white p-2 rounded-r-md disabled:bg-gray-400"
+                disabled={input.trim() === '' || isLoading || freeCredits <= 0}
               >
-                <Send size={20} />
+                <span className="font-semibold">Enter</span>
               </button>
-            </div>
-          
-            <div className="mt-2 flex justify-between items-center text-xs text-gray-400">
+            </form>
+            <div className="mt-2 text-xs text-gray-500 flex justify-between">
               <div>
-                <span className="mr-2">Model: NeuroCosmos 5.0</span>
-                <span>Context: 12K</span>
+                {freeCredits > 0 ? (
+                  <span>Free credits remaining: {freeCredits}</span>
+                ) : (
+                  <div className="flex items-center text-amber-600">
+                    <AlertCircle size={12} className="mr-1" />
+                    <span>No free credits available</span>
+                  </div>
+                )}
               </div>
               <div>
-                <span>Powered by Quantum Processing</span>
+                Each message costs 1 credit
               </div>
             </div>
-          </form>
+          </div>
         </div>
-        <ToastContainer />
+
+        {/* Right Sidebar - Info Panel */}
+        <div 
+          className={`${isSidebarOpen ? 'translate-x-0 w-80' : 'translate-x-full w-0'} 
+          transform transition-all duration-300 border-l overflow-auto bg-white`}
+        >
+          <div className="p-4">
+            <h3 className="font-bold text-lg mb-4">Prize pool</h3>
+            <div className="text-4xl font-bold mb-6">{prizePool}</div>
+            
+            <h3 className="font-bold text-lg mb-4">Time Remaining</h3>
+            <div className="text-lg mb-6">Game Running</div>
+            
+            {/* Free Credits Section */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <h3 className="font-bold text-lg mb-2">Free Credits</h3>
+              <p className="mb-4 text-sm">
+                Get 5 free message credits by authenticating with Twitter.
+              </p>
+              {authLoading ? (
+                <div className="flex justify-center py-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                </div>
+              ) : isTwitterAuthenticated ? (
+                <div>
+                  <div className="flex items-center text-green-600 mb-2">
+                    <Twitter size={16} className="mr-2" />
+                    <span>Twitter account connected</span>
+                  </div>
+                  {twitterUsername && (
+                    <div className="text-sm mb-2">
+                      Username: <span className="font-medium">@{twitterUsername}</span>
+                    </div>
+                  )}
+                  <div className="text-sm">
+                    Free credits available: <span className="font-bold">{freeCredits}</span>
+                  </div>
+                </div>
+              ) : (
+                <button 
+                  onClick={authenticateTwitter}
+                  className="flex items-center justify-center w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors"
+                >
+                  <Twitter size={16} className="mr-2" />
+                  <span>Connect Twitter</span>
+                </button>
+              )}
+            </div>
+            
+            <h3 className="font-bold text-lg mb-4">About</h3>
+            <p className="mb-4">
+              Freysa is the world's first adversarial agent game. She is an AI that controls a prize pool. 
+              Convince her to send it to you.
+            </p>
+            <p className="mb-6">
+              Freysa AI Move is a product participating in the Move AI Hackathon.
+            </p>
+            
+            <h3 className="font-bold text-lg mb-2">Main win condition</h3>
+            <p className="mb-4">
+              Convince Freysa to give you the prize pool in her wallet. 70% of all message fees 
+              go to growing the prize pool.
+            </p>
+            
+            <h3 className="font-bold text-lg mb-2">Fallback condition</h3>
+            <p className="mb-4">
+              Currently, there is no set end time for the act. It will continue until there is a winner 
+              or an admin stops it.
+            </p>
+            
+            <div className="mt-6 pt-4 border-t">
+              <div className="flex justify-between">
+                <button 
+                  className={`px-4 py-2 font-medium ${activeTab === 'global' ? 'text-black border-b-2 border-black' : 'text-gray-500'}`}
+                  onClick={() => setActiveTab('global')}
+                >
+                  Global chat
+                </button>
+                <button 
+                  className={`px-4 py-2 font-medium ${activeTab === 'my' ? 'text-black border-b-2 border-black' : 'text-gray-500'}`}
+                  onClick={() => setActiveTab('my')}
+                >
+                  My chat
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div className="p-4 border-t">
+            <div className="flex justify-between items-center mb-2">
+              <div className="font-medium">Prize pool {prizePool}</div>
+              <div className="text-sm text-gray-500">{participants} Participants · {attempts} Attempts</div>
+            </div>
+            <div className="font-bold">Freysa</div>
+          </div>
+        </div>
       </div>
+      <ToastContainer />
     </div>
   );
 }

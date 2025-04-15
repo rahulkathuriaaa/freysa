@@ -8,21 +8,36 @@ import Hero from "./components/Hero";
 import Pricing from "./components/Pricing";
 import Roadmap from "./components/Roadmap";
 import Services from "./components/Services";
+import { useEffect, useState } from 'react';
+import SplineModal from '@/components/SplineModal';
 
 const App = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    setIsModalOpen(true);
+  }, []);
+
   return (
     <>
-      <div className="pt-[4.75rem] lg:pt-[5.25rem] overflow-hidden">
-        <Header />
-        <Hero />
-        <Benefits />
-        <Collaboration />
-        <Services />
-        <Roadmap />
-        <Footer />
-      </div>
-
-      <ButtonGradient />
+      <SplineModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+      />
+      {!isModalOpen && (
+        <>
+          <div className="pt-[4.75rem] lg:pt-[5.25rem] overflow-hidden">
+            <Header />
+            <Hero />
+            <Benefits />
+            <Collaboration />
+            <Services />
+            <Roadmap />
+            <Footer />
+          </div>
+          <ButtonGradient />
+        </>
+      )}
     </>
   );
 };

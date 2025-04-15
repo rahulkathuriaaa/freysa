@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+
 import "./globals.css"
 
 const geistSans = Geist({
@@ -25,6 +26,8 @@ export default function RootLayout({
 	return (
 		<html lang="en">
 			<body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+
+
 				{/* Add stars to the background */}
 				<div className="star"></div>
 				<div className="star"></div>
@@ -36,6 +39,7 @@ export default function RootLayout({
 				<div className="star"></div>
 				<div className="star"></div>
 				{children}
+
 			</body>
 		</html>
 	)
