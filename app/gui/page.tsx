@@ -1,18 +1,20 @@
 "use client"
 import { useState, useRef, FormEvent, useEffect } from 'react';
-import { Send, Info, Clock, DollarSign, Users, Bot, FileText, MessageSquare, Twitter, AlertCircle } from 'lucide-react';
+import { Send, Info, Clock, DollarSign, Users, Bot, FileText, MessageSquare, Twitter, AlertCircle, ExternalLink } from 'lucide-react';
 import { Message } from 'ai';
 import { useChat } from 'ai/react';
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import WalletConnect from '@/components/WalletConnect';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 
 export default function FreysaAIInterface() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('global'); // 'global' or 'my'
   const messageContainerRef = useRef<HTMLDivElement | null>(null);
   const searchParams = useSearchParams();
+  const isDev = process.env.NODE_ENV === 'development';
   
   // Prize pool state
   const [prizePool, setPrizePool] = useState("$0.00");
@@ -20,7 +22,10 @@ export default function FreysaAIInterface() {
   const [attempts, setAttempts] = useState(1);
   const [freeCredits, setFreeCredits] = useState(0);
   const [isTwitterAuthenticated, setIsTwitterAuthenticated] = useState(false);
+  const [isTelegramJoined, setIsTelegramJoined] = useState(false);
   const [twitterUsername, setTwitterUsername] = useState<string | null>(null);
+  const [twitterName, setTwitterName] = useState<string | null>(null);
+  const [twitterProfileImage, setTwitterProfileImage] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   
   // Check authentication status and handle auth callbacks
@@ -28,11 +33,20 @@ export default function FreysaAIInterface() {
     // Handle auth success/error URL parameters
     const authStatus = searchParams.get('auth');
     const authError = searchParams.get('error');
+    const errorDetails = searchParams.get('details');
+    const isMockAuth = searchParams.get('mock') === 'true';
     
     if (authStatus === 'success') {
-      toast.success("Twitter authentication successful! You've received 5 free credits.");
+      if (isMockAuth) {
+        toast.success("Development mode: Mock Twitter authentication successful!");
+      } else {
+        toast.success("Twitter authentication successful! You've received 5 free credits.");
+      }
     } else if (authError) {
-      toast.error(`Authentication failed: ${authError}`);
+      const errorMessage = errorDetails 
+        ? `Authentication failed: ${authError} - ${errorDetails}`
+        : `Authentication failed: ${authError}`;
+      toast.error(errorMessage);
     }
     
     // Fetch auth status from API
@@ -44,7 +58,14 @@ export default function FreysaAIInterface() {
         
         setIsTwitterAuthenticated(data.isAuthenticated);
         setTwitterUsername(data.username);
+        setTwitterName(data.name);
+        setTwitterProfileImage(data.profileImageUrl);
         setFreeCredits(data.freeCredits);
+        
+        // Check Telegram join status
+        if (data.telegramJoined) {
+          setIsTelegramJoined(true);
+        }
       } catch (error) {
         console.error('Failed to check auth status:', error);
       } finally {
@@ -117,6 +138,38 @@ export default function FreysaAIInterface() {
 
   const authenticateTwitter = () => {
     window.location.href = '/api/auth/twitter';
+  };
+  
+  const authenticateWithMockData = async () => {
+    window.location.href = '/api/auth/twitter?mock=true';
+  };
+  
+  const joinTelegramGroup = () => {
+    // Open Telegram group in a new tab
+    window.open('https://t.me/+NTDIFatu1LcwMWE1', '_blank');
+    
+    // Add a confirmation after a short delay to simulate joining
+    setTimeout(() => {
+      const confirmed = window.confirm('Did you join our Telegram group? Click OK to receive 3 additional credits.');
+      if (confirmed) {
+        // Call the API to add credits
+        fetch('/api/credits/telegram', {
+          method: 'POST',
+        })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              setIsTelegramJoined(true);
+              setFreeCredits(data.totalCredits);
+              toast.success('Thank you for joining our Telegram group! You received 3 additional credits.');
+            }
+          })
+          .catch(error => {
+            console.error('Failed to add Telegram credits:', error);
+            toast.error('Failed to add credits. Please try again.');
+          });
+      }
+    }, 3000);
   };
 
   return (
@@ -245,7 +298,7 @@ export default function FreysaAIInterface() {
             <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
               <h3 className="font-bold text-lg mb-2">Free Credits</h3>
               <p className="mb-4 text-sm">
-                Get 5 free message credits by authenticating with Twitter.
+                Get free message credits by connecting your accounts.
               </p>
               {authLoading ? (
                 <div className="flex justify-center py-2">
@@ -253,27 +306,104 @@ export default function FreysaAIInterface() {
                 </div>
               ) : isTwitterAuthenticated ? (
                 <div>
-                  <div className="flex items-center text-green-600 mb-2">
-                    <Twitter size={16} className="mr-2" />
-                    <span>Twitter account connected</span>
+                  <div className="flex items-center mb-3">
+                    {twitterProfileImage ? (
+                      <div className="relative h-10 w-10 mr-3 rounded-full overflow-hidden">
+                        <Image
+                          src={twitterProfileImage}
+                          alt={twitterUsername || "Twitter profile"}
+                          width={40}
+                          height={40}
+                          className="rounded-full"
+                        />
+                      </div>
+                    ) : (
+                      <Twitter size={24} className="mr-2 text-blue-500" />
+                    )}
+                    <div>
+                      {twitterName && <div className="font-medium">{twitterName}</div>}
+                      {twitterUsername && (
+                        <div className="text-sm text-gray-600">
+                          @{twitterUsername}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {twitterUsername && (
-                    <div className="text-sm mb-2">
-                      Username: <span className="font-medium">@{twitterUsername}</span>
+                  <div className="flex items-center text-green-600 mb-2">
+                    <div className="flex-1 text-green-700 font-medium">Twitter connected</div>
+                    <a 
+                      href={`https://twitter.com/${twitterUsername}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:text-blue-700"
+                    >
+                      <ExternalLink size={14} />
+                    </a>
+                  </div>
+
+                  {/* Telegram Join Button (when Twitter is already connected) */}
+                  {!isTelegramJoined && (
+                    <button 
+                      onClick={joinTelegramGroup}
+                      className="flex items-center justify-center w-full py-2 px-4 mt-4 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors mb-2"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <path d="M20.572 3.012a1.9 1.9 0 0 0-1.95-.4 1.9 1.9 0 0 0-.516.242L2.954 10.409a1 1 0 0 0 .35 1.917l5.096.942 1.383 4.905a1 1 0 0 0 1.274.667 1 1 0 0 0 .175-.085l2.025-1.23 3.94 3.133a1 1 0 0 0 .638.228 1 1 0 0 0 .996-.873l3-15.1a1.9 1.9 0 0 0-.26-1.9zM4.693 11.025l12.19-5.839-7.8 6.64-4.39-.801zM9 14.914l.452-2.543 1.493 1.171L9 14.914zm9.675 2.466-4.836-3.85 9-7.667-4.164 11.517z"/>
+                      </svg>
+                      <span>Join Telegram for +3 Credits</span>
+                    </button>
+                  )}
+                  
+                  {isTelegramJoined && (
+                    <div className="mt-3 text-green-600 flex items-center">
+                      <svg className="w-4 h-4 mr-2" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <path d="M20.572 3.012a1.9 1.9 0 0 0-1.95-.4 1.9 1.9 0 0 0-.516.242L2.954 10.409a1 1 0 0 0 .35 1.917l5.096.942 1.383 4.905a1 1 0 0 0 1.274.667 1 1 0 0 0 .175-.085l2.025-1.23 3.94 3.133a1 1 0 0 0 .638.228 1 1 0 0 0 .996-.873l3-15.1a1.9 1.9 0 0 0-.26-1.9zM4.693 11.025l12.19-5.839-7.8 6.64-4.39-.801zM9 14.914l.452-2.543 1.493 1.171L9 14.914zm9.675 2.466-4.836-3.85 9-7.667-4.164 11.517z"/>
+                      </svg>
+                      <span>Telegram group joined (+3 credits)</span>
                     </div>
                   )}
-                  <div className="text-sm">
-                    Free credits available: <span className="font-bold">{freeCredits}</span>
+                  
+                  <div className="mt-4 text-sm font-medium bg-blue-50 p-2 rounded-md text-center">
+                    Free credits available: <span className="font-bold text-blue-700">{freeCredits}</span>
                   </div>
                 </div>
               ) : (
-                <button 
-                  onClick={authenticateTwitter}
-                  className="flex items-center justify-center w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors"
-                >
-                  <Twitter size={16} className="mr-2" />
-                  <span>Connect Twitter</span>
-                </button>
+                <div>
+                  <button 
+                    onClick={authenticateTwitter}
+                    className="flex items-center justify-center w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-md transition-colors mb-2"
+                  >
+                    <Twitter size={16} className="mr-2" />
+                    <span>Connect Twitter (+5 Credits)</span>
+                  </button>
+                  
+                  <button 
+                    onClick={joinTelegramGroup}
+                    className="flex items-center justify-center w-full py-2 px-4 mt-2 bg-[#0088cc] hover:bg-[#0077b5] text-white rounded-md transition-colors mb-2"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                      <path d="M20.572 3.012a1.9 1.9 0 0 0-1.95-.4 1.9 1.9 0 0 0-.516.242L2.954 10.409a1 1 0 0 0 .35 1.917l5.096.942 1.383 4.905a1 1 0 0 0 1.274.667 1 1 0 0 0 .175-.085l2.025-1.23 3.94 3.133a1 1 0 0 0 .638.228 1 1 0 0 0 .996-.873l3-15.1a1.9 1.9 0 0 0-.26-1.9zM4.693 11.025l12.19-5.839-7.8 6.64-4.39-.801zM9 14.914l.452-2.543 1.493 1.171L9 14.914zm9.675 2.466-4.836-3.85 9-7.667-4.164 11.517z"/>
+                    </svg>
+                    <span>Join Telegram (+3 Credits)</span>
+                  </button>
+                  
+                  {isDev && (
+                    <button 
+                      onClick={authenticateWithMockData}
+                      className="flex items-center justify-center w-full py-2 px-4 mt-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-md transition-colors text-sm"
+                    >
+                      <span>Use Mock Data (Dev Only)</span>
+                    </button>
+                  )}
+                  
+                  {searchParams.get('error') && (
+                    <div className="mt-3 text-xs text-amber-600 text-center">
+                      <p>Having trouble connecting?</p>
+                      <p className="mt-1">Twitter API can be temperamental.</p>
+                      {isDev && <p className="mt-1">Try the "Use Mock Data" option for testing.</p>}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
             

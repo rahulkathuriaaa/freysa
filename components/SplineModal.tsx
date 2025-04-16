@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Spline from '@splinetool/react-spline';
+import type { Application } from '@splinetool/runtime';
 
 interface SplineModalProps {
   isOpen: boolean;
@@ -10,6 +11,18 @@ interface SplineModalProps {
 
 export default function SplineModal({ isOpen, onClose }: SplineModalProps) {
   if (!isOpen) return null;
+  
+  const handleSplineLoad = (spline: Application) => {
+    // Access the camera and adjust zoom level
+    const camera = spline.camera;
+    if (camera) {
+      // Adjust zoom level - higher value zooms out
+      camera.zoom = 1;
+      // You can also adjust the position if needed
+      // camera.position.z = 1000;
+      spline.setZoom(1);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50">
@@ -17,6 +30,7 @@ export default function SplineModal({ isOpen, onClose }: SplineModalProps) {
         <Spline
           scene="https://prod.spline.design/8eGJMv5jCy8gnKtI/scene.splinecode"
           className="w-full h-full"
+          onLoad={handleSplineLoad}
         />
       </div>
       <button
